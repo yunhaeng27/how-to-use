@@ -1,12 +1,6 @@
-# Langfuse Score 예제
+# Langfuse 평가
 
-langfuse를 통해 evaluator를 정의하고 score 평가를 진행하는 방법에 대하여 기술.
-
-GenOS &gt; 평가 &gt; 평가지표 &gt; Langfuse를 이야기하는 것이 아님.
-
-Code Serving 과정에서 Langfuse를 에이전트와 연동하기 위한 가이드 설정.
-
-
+주의 - langfuse를 통해 evaluator를 정의하고 score 평가를 진행하는 방법에 대하여 기술. GenOS &gt; 평가 &gt; 평가지표 &gt; Langfuse를 이야기하는 것이 아님. Code Serving 과정에서 Langfuse를 에이전트와 연동하기 위한 가이드.
 
 ## Score
 
@@ -14,7 +8,7 @@ Langfuse의 Score는 Span별로 로깅을 진행할 수 있음.
 
 `score_current_trace`를 사용하면 현재 설정된 trace로 scoring를 기록할 수 있음.
 
-```
+```python
 # 02_evaluation 에이전트 코드 일부
 # <tracing 순서>
 # 1. @observe데코레이터를 통해 rag-agent-turn이라는 이름으로 span 생성
@@ -41,7 +35,7 @@ async def _run_traced_turn(payload: RagAgentRequest) -> RagAgentResponse:
 
 `create_score`를 통해서 원하는 trace에 score를 기록할 수 있음.
 
-```
+```python
 from langfuse import get_client
 langfuse = get_client()
 
