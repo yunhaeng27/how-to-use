@@ -147,3 +147,10 @@ finally:
 client.flush()
 ```
 
+## 실전 체크리스트
+
+> [!NOTE]
+> `LANGFUSE_HOST`/`LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` 중 하나라도 비어 있으면(또는 `langfuse` 패키지 import 실패 시) SDK 전체가 자동으로 no-op으로 폴백함. `get_client()`, `@observe`, `propagate_attributes`를 코드 그대로 호출해도 에러 없이 계측만 조용히 건너뛰고 나머지 로직은 정상 동작함. 구현은 평가 예제의 [`langfuse_utils.py`](codes/02_evaluation/common/langfuse_utils.py)와 propagation 예제의 [`langfuse_utils.py`](codes/03_propagation/common/langfuse_utils.py)에서 확인 가능.
+
+> [!IMPORTANT]
+> 응답을 반환하기 전에 `client.flush()`를 반드시 호출할 것. Langfuse SDK는 trace/span 데이터를 백그라운드에서 배치로 전송하므로, flush 없이 프로세스가 먼저 종료되면(서버리스 환경 등) 아직 전송되지 않은 trace가 유실될 수 있음. 위 3가지 방식 예제(Context Manager, Decorator, Manual Lifecycle) 모두 마지막 줄에서 `client.flush()`를 호출하는 이유가 여기 있음.
