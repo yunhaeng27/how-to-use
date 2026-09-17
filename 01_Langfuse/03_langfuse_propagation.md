@@ -2,8 +2,6 @@
 
 Langfuse를 통해 여러 에이전트 오케스트레이션 전파하는 방법 설명.
 
-
-
 *한 개발자가 에이전트를 개발한다고 해보자. 문제는 단일 에이전트가 아니라 여러 에이전트가 합쳐진 에이전트 오케스트레이션 형태로 만들 생각이다.*
 
 *여기에 더해 해당 개발자는 추후 확장성을 고려해 각 서브에이전트를 코드 기반 호출이 아니라 통신 기반 호출을 사용하려고 한다.(호출 방식은...자유롭게. a2a나 api나 mcp나 등등...)*
@@ -15,8 +13,6 @@ Langfuse를 통해 여러 에이전트 오케스트레이션 전파하는 방법
 *이런 형태로 만들기 위해서는 마스터 에이전트를 Langfuse에 기록할 때 사용한 Trace Context(Trace를 기록하기 위한 정보들)를 서브 에이전트에게 전파할 수 있어야 한다.*
 
 *해당 장에서는 그 방법에 대해 이야기해보자.*
-
-
 
 ## Trace Propagation 필수 요소
 
@@ -46,8 +42,8 @@ from langfuse.decorators import observe
 # 데코레이터 적용
 @observe()
 def process_user_request(input_text):
-    # 실제 함수 파라미터에는 langfuse_... 인자를 정의할 필요가 없습니다.
-    # 데코레이터가 가로채서 알아서 처리하기 때문입니다.
+    # 실제 함수 파라미터에는 langfuse_... 인자를 정의할 필요 없음.
+    # 데코레이터가 가로채서 알아서 처리함.
     print(f"처리 중: {input_text}")
     return "완료"
 
@@ -93,7 +89,13 @@ with langfuse.start_as_current_observation(
 2. A2A - 불가능
   1. A2A는 GenOS에서 자체적으로 헤더를 재구성하고, body도 변환할 수 없음.
 
+워크플로우 경로(코드서빙 게이트웨이 경유 호출 포함)가 가능한 이유는 게이트웨이가 요청 body를 건드리지 않고 그대로 통과시키기 때문.
 
+코드서빙 요청 스키마는 사용자 정의이므로 게이트웨이가 body를 건드리면 안 된다"는 원칙을 따른다.
+
+body를 손대지 않으니 그 안에 실어 보낸 `trace_id`/`parent_span_id`가 상대 에이전트의 요청 스키마까지 그대로 도달한다([`subagent_client.py`](codes/03_propagation/common/subagent_client.py) 참고).
+
+반대로 A2A는 GenOS가 A2A 프로토콜 스펙에 맞춰 헤더/body를 직접 재구성하는 계층이라, body에 넣은 임의 필드는 그 과정에서 사라짐. 그래서 propagation이 불가능함.
 
 ## 예제 코드
 
