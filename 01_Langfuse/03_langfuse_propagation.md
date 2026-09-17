@@ -16,12 +16,12 @@ Langfuse를 통해 여러 에이전트 오케스트레이션 전파하는 방법
 
 ## Trace Propagation 필수 요소
 
-Trace를 깨지지 않고 성공적으로 기록하기 위해서는 두가지 정보가 필수적으로 필요하다.
+Trace를 깨지지 않고 성공적으로 기록하기 위해서는 두가지 정보가 필수적으로 필요함.
 
 - Trace-ID: 어떤 Trace에 기록할 것인가?
 - Parent-Span-ID: 어떤 Span 하위로 들어갈 것인가?
 
-기록될 Trace가 정해지고, 부모 Span이 정해지면, 해당 부모 Span 하위에서 본인 에이전트의 Span을 모두 기록하면 깔끔하게 기록될 것이다.
+기록될 Trace와 부모 Span이 정해지면, 해당 부모 Span 하위에서 본인 에이전트의 Span을 모두 기록하면 깔끔하게 기록됨.
 
 *parent span & child span*
 
@@ -36,11 +36,11 @@ Langfuse에 전달하는 trace_id/parent_span_id는 정해진 형식을 만족�
 
 ## Trace Context 전달 방법
 
-Trace Context를 실제 코드에 적용하는 방법은 크게 2가지.
+Trace Context를 실제 코드에 적용하는 방법은 크게 2가지임.
 
 ## Decorator
 
-데코레이터는 해당 함수에 `langfuse_trace_id`, `langfuse_parent_observation_id`를 넣어주면 적용된다.
+데코레이터는 해당 함수에 `langfuse_trace_id`, `langfuse_parent_observation_id`를 넣어주면 적용됨.
 
 > [!IMPORTANT]
 > 중요한 것은, 별도로 해당 인자들을 선언해줄 필요 없다는 것. 데코레이터가 인자를 알아서 처리한다.
@@ -71,7 +71,7 @@ process_user_request(
 
 ## Context Manager
 
-Context Manager 방식을 적용할 땐 `trace_context`에 `trace_id`, `parent_span_id` 두 값을 넣어 전달하면 된다.
+Context Manager 방식을 적용할 땐 `trace_context`에 `trace_id`, `parent_span_id` 두 값을 넣어 전달하면 됨.
 
 ```python
 from langfuse import get_client
@@ -97,15 +97,15 @@ with langfuse.start_as_current_observation(
   1. GenOS Config를 통해 환경변수로 langfuse trace parent를 전달할 수 있는 헤더를 허용 설정 후 헤더에 `traceparent`를 넣어 전달
   2. body에 langfuse trace context를 넣어 전달
 2. A2A - 불가능
-  1. A2A는 GenOS에서 자체적으로 헤더를 재구성하고, body도 변환할 수 없음.
+  1. A2A에서는 GenOS가 헤더를 자체적으로 재구성할 수 없음. body도 변환할 수 없음.
 
-워크플로우 경로(코드서빙 게이트웨이 경유 호출 포함)가 가능한 이유는 게이트웨이가 요청 body를 건드리지 않고 그대로 통과시키기 때문.
+워크플로우 경로(코드서빙 게이트웨이 경유 호출 포함)가 가능한 이유는 게이트웨이가 요청 body를 건드리지 않고 그대로 통과시키기 때문임.
 
-코드서빙 요청 스키마는 사용자 정의이므로 게이트웨이가 body를 건드리면 안 된다"는 원칙을 따른다.
+코드서빙 요청 스키마는 사용자 정의이므로 게이트웨이가 body를 건드리지 않는다는 원칙을 따름.
 
-body를 손대지 않으니 그 안에 실어 보낸 `trace_id`/`parent_span_id`가 상대 에이전트의 요청 스키마까지 그대로 도달한다([`subagent_client.py`](codes/03_propagation/common/subagent_client.py) 참고).
+body를 손대지 않으니 그 안에 실어 보낸 `trace_id`/`parent_span_id`가 상대 에이전트의 요청 스키마까지 그대로 도달함([`subagent_client.py`](codes/03_propagation/common/subagent_client.py) 참고).
 
-반대로 A2A는 GenOS가 A2A 프로토콜 스펙에 맞춰 헤더/body를 직접 재구성하는 계층이라, body에 넣은 임의 필드는 그 과정에서 사라짐. 그래서 propagation이 불가능함.
+반대로 A2A는 GenOS가 A2A 프로토콜 스펙에 맞춰 헤더/body를 직접 재구성하는 계층임. 그 과정에서 body에 넣은 임의 필드는 사라짐. 그래서 propagation이 불가능함.
 
 ## 예제 코드
 
