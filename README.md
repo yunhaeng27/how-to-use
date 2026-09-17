@@ -12,8 +12,8 @@ GenOS의 서비스 적응을 위한 각종 기능에 대한 세부 설명, 가�
 
 ## 목차
 
-- [01_Langfuse](01_Langfuse/README.md) — Langfuse 사용법, GenOS 등 사내 서비스 연동 예제/케이스
-- [99_GenOS](99_GenOS/README.md) — 여러 가이드에 걸쳐 재사용되는 GenOS 공용 내용
+- [01_Langfuse](01_Langfuse) — Langfuse 사용법, GenOS 등 사내 서비스 연동 예제/케이스
+- [99_GenOS](99_GenOS) — 여러 가이드에 걸쳐 재사용되는 GenOS 공용 내용
 
 ## 규칙
 
