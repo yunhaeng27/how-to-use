@@ -138,3 +138,7 @@ print(result.format())
 
 - `score_current_trace`로 groundedness를 채점하는 실제 예: [`02_evaluation`](codes/02_evaluation)의 rag agent(`agents/rag_agent/service.py`, `agents/rag_agent/evaluator.py`)
 
+## 실행해보고 싶다면
+
+[`02_evaluation`](codes/02_evaluation)에 `uv`로 가상환경을 구성하고 `.env`에 GenOS/Langfuse 값을 채운 뒤 `uv run uvicorn main:app --port 8000`으로 띄우면 로컬에서 바로 확인할 수 있음. 구체적인 절차는 [`codes/02_evaluation/README.md`](codes/02_evaluation/README.md) 참고.
+
