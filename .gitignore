@@ -13,8 +13,5 @@ wheels/
 # Secrets
 .env
 
-# claude
-.claude
-
 # 테스트 폴더
 /test
