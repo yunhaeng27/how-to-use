@@ -7,7 +7,10 @@
 """
 from __future__ import annotations
 
-from common.langfuse_utils import LANGFUSE_ENABLED, get_client, observe, propagate_attributes
+import logging
+import re
+
+from common.langfuse_utils import LANGFUSE_ENABLED, get_client, observe
 
 from .agent import run_agent
 from .evaluator import evaluate_groundedness
@@ -19,6 +22,34 @@ from .schema import (
     SourceDocument,
 )
 from .tools import get_documents_by_ids
+
+logger = logging.getLogger(__name__)
+
+# Langfuse(OTel) trace_id는 32자, span_id(observation_id)는 16자 소문자 16진수여야 한다.
+# 형식이 어긋난 값을 그대로 넘기면 langfuse SDK 내부의 int(value, 16) 변환에서 예외가 날 수
+# 있으므로, 외부(HTTP body)에서 들어온 값은 반드시 여기서 먼저 검증한다.
+_TRACE_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+_SPAN_ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
+
+
+def _validated_trace_id(value: str | None) -> str | None:
+    """형식이 맞으면 그대로, 없거나 형식이 틀리면 None(→ 새 trace로 폴백)."""
+    if not value:
+        return None
+    if not _TRACE_ID_PATTERN.fullmatch(value):
+        logger.warning("무시된 trace_id — 32자 소문자 16진수가 아님: %r", value)
+        return None
+    return value
+
+
+def _validated_parent_span_id(value: str | None) -> str | None:
+    """형식이 맞으면 그대로, 없거나 형식이 틀리면 None(→ trace 안에서 부모 없이 시작)."""
+    if not value:
+        return None
+    if not _SPAN_ID_PATTERN.fullmatch(value):
+        logger.warning("무시된 parent_span_id — 16자 소문자 16진수가 아님: %r", value)
+        return None
+    return value
 
 
 @observe(as_type="span", name="rag-agent-turn")
@@ -53,7 +84,19 @@ async def _run_traced_turn(payload: RagAgentRequest) -> RagAgentResponse:
 
 
 async def handle_turn(payload: RagAgentRequest) -> RagAgentResponse:
-    with propagate_attributes(session_id=payload.chatId, user_id=None):
+    # 워크플로우 API(/run/v2)를 직접 호출하는 쪽이 body에 trace_id/parent_span_id를 실어 보내면
+    # 그 trace의 그 span 아래로 이어 붙인다. 값이 없거나 형식이 잘못됐으면(예: 미전달, 길이 오류)
+    # langfuse_trace_id kwarg 자체를 넘기지 않아 @observe가 새 trace를 발급하는 기본 동작으로
+    # 안전하게 폴백한다 — 이 경로에서 예외가 나서 요청이 실패하는 일은 없다.
+    trace_id = _validated_trace_id(payload.trace_id) if LANGFUSE_ENABLED else None
+
+    if trace_id:
+        kwargs = {"langfuse_trace_id": trace_id}
+        parent_span_id = _validated_parent_span_id(payload.parent_span_id)
+        if parent_span_id:
+            kwargs["langfuse_parent_observation_id"] = parent_span_id
+        result = await _run_traced_turn(payload, **kwargs)
+    else:
         result = await _run_traced_turn(payload)
 
     if LANGFUSE_ENABLED:
