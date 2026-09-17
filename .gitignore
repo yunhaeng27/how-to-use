@@ -15,3 +15,6 @@ wheels/
 
 # claude
 .claude
+
+# 테스트 폴더
+/test
