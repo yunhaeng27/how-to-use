@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 # Langfuse(OTel) trace_id는 32자, span_id(observation_id)는 16자 소문자 16진수여야 한다.
 _TRACE_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 _SPAN_ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
+# W3C traceparent: "<version>-<trace-id 32hex>-<parent-id 16hex>-<flags>" (RFC 형식 그대로).
+_TRACEPARENT_PATTERN = re.compile(r"^[0-9a-f]{2}-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
 
 
 def _validated_trace_id(value: str | None) -> str | None:
@@ -40,6 +42,35 @@ def _validated_trace_id(value: str | None) -> str | None:
         logger.warning("무시된 trace_id — 32자 소문자 16진수가 아님: %r", value)
         return None
     return value
+
+
+def _parsed_traceparent(value: str | None) -> tuple[str | None, str | None]:
+    """W3C ``traceparent`` 헤더에서 trace_id/parent_span_id 를 뽑아낸다.
+
+    genportal-api/gateway-api 내부 홉은 ``x-genos-trace-id`` 를 보존하지 않고 이 표준 헤더로만
+    trace 를 전파한다(최외곽 진입점에서만 x-genos-trace-id 로 root trace_id 를 시딩) —
+    ``x-genos-trace-id`` 가 비어 있을 때(실제 코드서빙 배포 경로)의 폴백으로 쓴다.
+    """
+    if not value:
+        return None, None
+    match = _TRACEPARENT_PATTERN.fullmatch(value.strip())
+    if not match:
+        return None, None
+    trace_id, parent_span_id = match.groups()
+    if trace_id == "0" * 32 or parent_span_id == "0" * 16:
+        return None, None
+    return trace_id, parent_span_id
+
+
+def _normalized_genos_trace_id(value: str | None) -> str | None:
+    """``x-genos-trace-id`` 헤더(하이픈 포함 UUID)를 하이픈 제거 + 소문자 32-hex 로 변환한다.
+
+    예: ``550e8400-e29b-41d4-a716-446655440000`` -> ``550e8400e29b41d4a716446655440000``.
+    형식이 안 맞으면(UUID 가 아님 등) None — 이후 ``_validated_trace_id`` 에서 한 번 더 검증한다.
+    """
+    if not value:
+        return None
+    return value.replace("-", "").lower()
 
 
 def _validated_parent_span_id(value: str | None) -> str | None:
@@ -81,17 +112,43 @@ async def _run_traced_turn(
     )
 
 
-async def handle_turn(payload: MasterAgentRequest, session_id: str | None = None) -> MasterAgentResponse:
-    trace_id = _validated_trace_id(payload.trace_id) if LANGFUSE_ENABLED else None
+async def handle_turn(
+    payload: MasterAgentRequest,
+    session_id: str | None = None,
+    header_trace_id: str | None = None,
+    traceparent: str | None = None,
+) -> MasterAgentResponse:
+    kwargs: dict[str, str] = {}
+    if LANGFUSE_ENABLED:
+        # GenOS 게이트웨이가 준 x-genos-trace-id 헤더를 최우선으로 쓴다 — genos 는 아직
+        # parent_span_id 를 전달해주는 기능이 없으므로 이 경로에서는 trace_id 만 이어 붙인다.
+        # 헤더 값은 하이픈 포함 UUID 이므로 OTel trace_id(32자 소문자 hex) 형식으로 먼저 변환한다.
+        trace_id = _validated_trace_id(_normalized_genos_trace_id(header_trace_id))
+        parent_span_id = None
+        if not trace_id:
+            # x-genos-trace-id 가 없으면(실제 코드서빙 배포 경로 — genportal-api/gateway-api 내부
+            # 홉은 이 헤더를 보존하지 않고 표준 traceparent 로만 trace 를 전파한다) traceparent 에서
+            # trace_id/parent_span_id 를 폴백으로 뽑아 쓴다.
+            traceparent_trace_id, traceparent_parent_span_id = _parsed_traceparent(traceparent)
+            trace_id = _validated_trace_id(traceparent_trace_id)
+            if trace_id:
+                parent_span_id = _validated_parent_span_id(traceparent_parent_span_id)
 
-    if trace_id:
-        kwargs = {"langfuse_trace_id": trace_id}
-        parent_span_id = _validated_parent_span_id(payload.parent_span_id)
-        if parent_span_id:
-            kwargs["langfuse_parent_observation_id"] = parent_span_id
-        result = await _run_traced_turn(payload, session_id=session_id, **kwargs)
-    else:
-        result = await _run_traced_turn(payload, session_id=session_id)
+        if trace_id:
+            kwargs["langfuse_trace_id"] = trace_id
+            if parent_span_id:
+                kwargs["langfuse_parent_observation_id"] = parent_span_id
+        else:
+            # 헤더도 traceparent 도 없으면(로컬 curl 등) 기존처럼 상위 워크플로우가 body 로
+            # 실어 보낸 trace_id/parent_span_id 로 폴백한다.
+            trace_id = _validated_trace_id(payload.trace_id)
+            if trace_id:
+                kwargs["langfuse_trace_id"] = trace_id
+                parent_span_id = _validated_parent_span_id(payload.parent_span_id)
+                if parent_span_id:
+                    kwargs["langfuse_parent_observation_id"] = parent_span_id
+
+    result = await _run_traced_turn(payload, session_id=session_id, **kwargs)
 
     if LANGFUSE_ENABLED:
         get_client().flush()
