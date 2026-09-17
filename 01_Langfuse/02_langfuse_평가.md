@@ -1,6 +1,9 @@
 # Langfuse 평가
 
-주의 - langfuse를 통해 evaluator를 정의하고 score 평가를 진행하는 방법에 대하여 기술. GenOS &gt; 평가 &gt; 평가지표 &gt; Langfuse를 이야기하는 것이 아님. Code Serving 과정에서 Langfuse를 에이전트와 연동하기 위한 가이드.
+> [!IMPORTANT]
+> langfuse를 통해 evaluator를 정의하고 score 평가를 진행하는 방법에 대하여 기술. GenOS &gt; 평가 &gt; 평가지표 &gt; Langfuse를 이야기하는 것이 아님.
+
+Code Serving 과정에서 Langfuse를 에이전트와 연동하기 위한 가이드.
 
 ## Score
 
@@ -50,6 +53,8 @@ langfuse.create_score(
 ```
 
 단발성 trace에 대한 score를 생성하는 것이 아니라 데이터셋에 기반하여 에이전트 평가나 실험을 하려면 `experiments`기능을 사용할 것.
+
+`create_score`/`experiments`는 Langfuse 공식 API 사용법이고, 저장소에 대응하는 예제 코드는 없음.
 
 ## Experiments
 
@@ -128,4 +133,8 @@ result = dataset.run_experiment(
 # Use format method to display results
 print(result.format())
 ```
+
+## 예제 코드
+
+- `score_current_trace`로 groundedness를 채점하는 실제 예: [`02_evaluation`](codes/02_evaluation)의 rag agent(`agents/rag_agent/service.py`, `agents/rag_agent/evaluator.py`)
 

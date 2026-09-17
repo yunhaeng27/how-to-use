@@ -2,8 +2,8 @@
 
 GenOS에서 "Langfuse"라고 하면 크게 두 가지를 가리킴.
 
-- GenOS 자체가 내부적으로 사용하는 Langfuse. GenOS에서 서빙이 실행될 때마다 로깅.
-- Code Serving 등 개발 과정에서 사용자가 직접 외부 Langfuse를 연결해 로깅하는 것.
+- GenOS 자체가 내부적으로 사용하는 Langfuse. GenOS에서 서빙이 실행될 때마다 로깅. —&gt;  [GenOS Langfuse](#genos-langfuse)
+-  Code Serving 등 개발 과정에서 사용자가 직접 외부 Langfuse를 연결해 로깅하는 것. —&gt; [외부 Langfuse 연동](#외부-langfuse-연동)
 
 ## GenOS Langfuse
 
