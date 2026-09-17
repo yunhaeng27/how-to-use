@@ -27,6 +27,13 @@ Trace를 깨지지 않고 성공적으로 기록하기 위해서는 두가지 �
 
 ![parent span & child span](assets/images/span_tree.png)
 
+## 형식 검증 규칙
+
+Langfuse에 전달하는 trace_id/parent_span_id는 정해진 형식을 만족해야 한다.
+
+- **Trace ID**: 32자리의 16진수 문자열(32 hex chars). 예: `abcdef1234567890abcdef1234567890`
+- **Observation ID(Parent Span ID)**: 16자리의 16진수 문자열(16 hex chars). 예: `fedcba0987654321`
+
 ## Trace Context 전달 방법
 
 Trace Context를 실제 코드에 적용하는 방법은 크게 2가지.
@@ -34,6 +41,9 @@ Trace Context를 실제 코드에 적용하는 방법은 크게 2가지.
 ## Decorator
 
 데코레이터는 해당 함수에 `langfuse_trace_id`, `langfuse_parent_observation_id`를 넣어주면 적용된다.
+
+> [!IMPORTANT]
+> 중요한 것은, 별도로 해당 인자들을 선언해줄 필요 없다는 것. 데코레이터가 인자를 알아서 처리한다.
 
 ```python
 # Decorator의 경우
@@ -49,7 +59,7 @@ def process_user_request(input_text):
 
 # 외부(예: 프론트엔드, API Gateway 등)에서 전달받은 ID들
 external_trace_id = "abcdef1234567890abcdef1234567890"
-external_parent_span_id = "span-987654321"
+external_parent_span_id = "1234567890abcdef"
 
 # 함수 호출 시 키워드 인자로 주입 (전파)
 process_user_request(
