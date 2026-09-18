@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from .schema import RagAgentRequest, RagAgentResponse
 from .service import handle_turn
@@ -15,5 +15,8 @@ router = APIRouter(prefix="/agents/rag", tags=["rag-agent"])
 
 
 @router.post("/chat", response_model=RagAgentResponse)
-async def run_rag_agent(payload: RagAgentRequest) -> RagAgentResponse:
-    return await handle_turn(payload)
+async def run_rag_agent(payload: RagAgentRequest, request: Request) -> RagAgentResponse:
+    # 상위 호출자(03 master agent 등)가 표준 W3C traceparent 로 trace 를 이어 보내면 그 trace 의
+    # 그 span 아래로 이어 붙인다(더 이상 body 로 trace_id/parent_span_id 를 받지 않는다).
+    traceparent = request.headers.get("traceparent")
+    return await handle_turn(payload, traceparent=traceparent)

@@ -4,9 +4,11 @@
 parameters/run/to_openai_tool) + resolve_refs 패턴을 그대로 가져와, 이 예제의 유일한 도구
 ``ask_internal_rag_agent`` 하나에 맞춘다.
 
-LLM 이 만드는 건 ``instruction`` 하나뿐이다 — trace_id/parent_span_id 는 LLM 의 tool call
-스키마에 노출하지 않고, ``agent.py::_execute_tool`` 이 자신의 현재 관측(tool span) 에서 읽어
-``run()`` 호출 시 별도 인자로 주입한다(사용자 요청: "tool call 로직에서 넣어주면 될 듯").
+LLM 이 만드는 건 ``instruction`` 하나뿐이다 — trace 전파 정보는 LLM 의 tool call 스키마에
+노출하지 않고, ``agent.py::_execute_tool`` 이 자신의 현재 관측(tool span) 에서 trace_id/
+observation_id 를 읽어 표준 W3C ``traceparent`` 문자열로 조립한 뒤 ``run()`` 호출 시 별도
+인자로 주입한다 — 서브에이전트(02) 호출은 더 이상 body 로 trace_id/parent_span_id 를
+싣지 않고 이 헤더 하나로만 trace 를 이어 붙인다.
 """
 from __future__ import annotations
 
@@ -78,7 +80,6 @@ class DelegateToRagSubagentTool(BaseTool):
         self,
         instruction: str,
         *,
-        trace_id: Optional[str] = None,
-        parent_span_id: Optional[str] = None,
+        traceparent: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return call_rag_subagent(instruction=instruction, trace_id=trace_id, parent_span_id=parent_span_id)
+        return call_rag_subagent(instruction=instruction, traceparent=traceparent)
