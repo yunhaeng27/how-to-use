@@ -134,19 +134,13 @@ async def handle_turn(
             if trace_id:
                 parent_span_id = _validated_parent_span_id(traceparent_parent_span_id)
 
+        # x-genos-trace-id/traceparent 둘 다 없으면(로컬 curl 등) langfuse_trace_id kwarg 자체를
+        # 넘기지 않아 @observe 가 새 trace 를 발급하는 기본 동작으로 안전하게 폴백한다 — 더 이상
+        # body 의 trace_id/parent_span_id 는 받지 않는다.
         if trace_id:
             kwargs["langfuse_trace_id"] = trace_id
             if parent_span_id:
                 kwargs["langfuse_parent_observation_id"] = parent_span_id
-        else:
-            # 헤더도 traceparent 도 없으면(로컬 curl 등) 기존처럼 상위 워크플로우가 body 로
-            # 실어 보낸 trace_id/parent_span_id 로 폴백한다.
-            trace_id = _validated_trace_id(payload.trace_id)
-            if trace_id:
-                kwargs["langfuse_trace_id"] = trace_id
-                parent_span_id = _validated_parent_span_id(payload.parent_span_id)
-                if parent_span_id:
-                    kwargs["langfuse_parent_observation_id"] = parent_span_id
 
     result = await _run_traced_turn(payload, session_id=session_id, **kwargs)
 

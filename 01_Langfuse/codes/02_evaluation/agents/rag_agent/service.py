@@ -27,9 +27,11 @@ logger = logging.getLogger(__name__)
 
 # Langfuse(OTel) trace_id는 32자, span_id(observation_id)는 16자 소문자 16진수여야 한다.
 # 형식이 어긋난 값을 그대로 넘기면 langfuse SDK 내부의 int(value, 16) 변환에서 예외가 날 수
-# 있으므로, 외부(HTTP body)에서 들어온 값은 반드시 여기서 먼저 검증한다.
+# 있으므로, 외부(HTTP 헤더)에서 들어온 값은 반드시 여기서 먼저 검증한다.
 _TRACE_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 _SPAN_ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
+# W3C traceparent: "<version>-<trace-id 32hex>-<parent-id 16hex>-<flags>" (RFC 형식 그대로).
+_TRACEPARENT_PATTERN = re.compile(r"^[0-9a-f]{2}-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
 
 
 def _validated_trace_id(value: str | None) -> str | None:
@@ -50,6 +52,24 @@ def _validated_parent_span_id(value: str | None) -> str | None:
         logger.warning("무시된 parent_span_id — 16자 소문자 16진수가 아님: %r", value)
         return None
     return value
+
+
+def _parsed_traceparent(value: str | None) -> tuple[str | None, str | None]:
+    """W3C ``traceparent`` 헤더에서 trace_id/parent_span_id 를 뽑아낸다.
+
+    상위 호출자(03 master agent 의 ``ask_internal_rag_agent`` 도구 호출 등)가 이 표준 헤더로
+    trace 를 전파하면 그 trace_id/parent_span_id 아래로 이어 붙인다 — 더 이상 body 로는
+    받지 않는다.
+    """
+    if not value:
+        return None, None
+    match = _TRACEPARENT_PATTERN.fullmatch(value.strip())
+    if not match:
+        return None, None
+    trace_id, parent_span_id = match.groups()
+    if trace_id == "0" * 32 or parent_span_id == "0" * 16:
+        return None, None
+    return trace_id, parent_span_id
 
 
 @observe(as_type="span", name="rag-agent-turn")
@@ -83,16 +103,21 @@ async def _run_traced_turn(payload: RagAgentRequest) -> RagAgentResponse:
     )
 
 
-async def handle_turn(payload: RagAgentRequest) -> RagAgentResponse:
-    # 워크플로우 API(/run/v2)를 직접 호출하는 쪽이 body에 trace_id/parent_span_id를 실어 보내면
-    # 그 trace의 그 span 아래로 이어 붙인다. 값이 없거나 형식이 잘못됐으면(예: 미전달, 길이 오류)
-    # langfuse_trace_id kwarg 자체를 넘기지 않아 @observe가 새 trace를 발급하는 기본 동작으로
-    # 안전하게 폴백한다 — 이 경로에서 예외가 나서 요청이 실패하는 일은 없다.
-    trace_id = _validated_trace_id(payload.trace_id) if LANGFUSE_ENABLED else None
+async def handle_turn(payload: RagAgentRequest, traceparent: str | None = None) -> RagAgentResponse:
+    # 상위 호출자가 표준 W3C traceparent 로 trace 를 실어 보내면 그 trace 의 그 span 아래로 이어
+    # 붙인다. 값이 없거나 형식이 잘못됐으면(예: 미전달, 길이 오류) langfuse_trace_id kwarg 자체를
+    # 넘기지 않아 @observe가 새 trace를 발급하는 기본 동작으로 안전하게 폴백한다 — 이 경로에서
+    # 예외가 나서 요청이 실패하는 일은 없다.
+    trace_id = None
+    parent_span_id = None
+    if LANGFUSE_ENABLED:
+        traceparent_trace_id, traceparent_parent_span_id = _parsed_traceparent(traceparent)
+        trace_id = _validated_trace_id(traceparent_trace_id)
+        if trace_id:
+            parent_span_id = _validated_parent_span_id(traceparent_parent_span_id)
 
     if trace_id:
         kwargs = {"langfuse_trace_id": trace_id}
-        parent_span_id = _validated_parent_span_id(payload.parent_span_id)
         if parent_span_id:
             kwargs["langfuse_parent_observation_id"] = parent_span_id
         result = await _run_traced_turn(payload, **kwargs)

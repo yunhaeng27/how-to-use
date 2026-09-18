@@ -16,11 +16,6 @@ class RagAgentRequest(BaseModel):
     question: str
     stream: Optional[bool] = False
     chatId: Optional[str] = None
-    # 워크플로우 API(/run/v2) 직접 호출 시 body에 실어 보내는 Langfuse trace 연결 정보.
-    # A2A 경유 호출은 이 필드를 실어 보낼 방법이 없으므로 항상 비어 있을 수 있다 — service.py가
-    # 없거나 형식이 잘못된 값을 안전하게 무시하고 폴백한다.
-    trace_id: Optional[str] = None
-    parent_span_id: Optional[str] = None
 
 
 class EvaluationResult(BaseModel):

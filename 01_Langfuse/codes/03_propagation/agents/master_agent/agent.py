@@ -53,11 +53,13 @@ def _call_model_step(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
 @observe(as_type="tool", name="ask_internal_rag_agent")
 def _execute_tool(instruction: str) -> Dict[str, Any]:
     client = get_client()
-    result = _TOOL.run(
-        instruction=instruction,
-        trace_id=client.get_current_trace_id(),
-        parent_span_id=client.get_current_observation_id(),
-    )
+    trace_id = client.get_current_trace_id()
+    # 방금 @observe 가 연 이 tool span 자신의 observation_id 를 traceparent 의 parent-id
+    # 자리(=이 요청을 보내는 쪽의 span id)에 그대로 싣는다 — 서브에이전트(02)는 이 값을 자기
+    # 새 trace 의 부모로 이어 붙인다. body 로 별도 trace_id/parent_span_id 를 보내지 않는다.
+    parent_span_id = client.get_current_observation_id()
+    traceparent = f"00-{trace_id}-{parent_span_id}-01" if trace_id and parent_span_id else None
+    result = _TOOL.run(instruction=instruction, traceparent=traceparent)
     client.update_current_span(output=result.get("text"))
     return result
 

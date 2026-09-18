@@ -7,11 +7,11 @@
     /code_serving/{code_serving_id}/{code_serving_revision_id:int}/{path:path}
 
 ``RewritePath`` 가 앞의 두 path 세그먼트(``code_serving_id``/``revision_id``)만 잘라내고 나머지
-(``/agents/rag/chat``)를 코드서빙 파드에 그대로 전달하며, "코드서빙 요청 스키마는 사용자 정의이므로
-게이트웨이가 body 를 건드리면 안 된다"(dispatcher 주석)는 원칙에 따라 body 는 손대지 않고 그대로
-통과한다. 그래서 여기서 보내는 ``trace_id``/``parent_span_id`` 가 02 의 ``RagAgentRequest`` 까지
-그대로 도달한다 — 이게 이 예제(langfuse propagation)의 핵심 경로다. ``/run/v2``(워크플로우 Python/
-Flowise 스텝 실행용)는 이 경로와 무관하다.
+(``/agents/rag/chat``)를 코드서빙 파드에 그대로 전달하며, 헤더 역시 body 와 마찬가지로 손대지
+않고 그대로 통과시킨다. 그래서 여기서 보내는 ``traceparent`` 헤더가 02 라우터
+(``agents/rag_agent/router.py``)까지 그대로 도달해 같은 trace 로 이어 붙는다 — 이게 이 예제
+(langfuse propagation)의 핵심 경로다. ``/run/v2``(워크플로우 Python/Flowise 스텝 실행용)는
+이 경로와 무관하다.
 
 인증은 마스터 자신의 LLM 호출에 쓰는 ``GENOS_BEARER_TOKEN``(``genos_client.py``, 서빙 리소스용)과
 별개로, 코드서빙 리소스 전용 Bearer 토큰이 필요하다(``AuthKeyBearer(resource_type=code_serving)``).
@@ -55,8 +55,7 @@ def _endpoint_and_headers() -> Tuple[str, Dict[str, str]]:
 
 def call_rag_subagent(
     instruction: str,
-    trace_id: Optional[str] = None,
-    parent_span_id: Optional[str] = None,
+    traceparent: Optional[str] = None,
     chat_id: Optional[str] = None,
     timeout: float = 60.0,
 ) -> Dict[str, Any]:
@@ -70,12 +69,11 @@ def call_rag_subagent(
     body: Dict[str, Any] = {"question": instruction, "stream": False}
     if chat_id:
         body["chatId"] = chat_id
-    # 게이트웨이가 body 를 그대로 통과시키므로, 여기 실은 trace_id/parent_span_id 가 02 의
-    # RagAgentRequest.trace_id/parent_span_id 까지 그대로 도달해 같은 trace 로 이어 붙는다.
-    if trace_id:
-        body["trace_id"] = trace_id
-    if parent_span_id:
-        body["parent_span_id"] = parent_span_id
+    # 게이트웨이가 body 를 그대로 통과시키므로, 여기 실은 표준 W3C traceparent 헤더가 02 라우터
+    # (``agents/rag_agent/router.py``)까지 그대로 도달해 같은 trace 로 이어 붙는다. 더 이상
+    # trace_id/parent_span_id 를 body 필드로 보내지 않는다.
+    if traceparent:
+        headers["traceparent"] = traceparent
 
     res = requests.post(endpoint, headers=headers, json=body, timeout=timeout)
     res.raise_for_status()
