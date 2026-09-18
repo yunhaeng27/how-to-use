@@ -34,6 +34,19 @@ Langfuse에 전달하는 trace_id/parent_span_id는 정해진 형식을 만족�
 - **Trace ID**: 32자리의 16진수 문자열(32 hex chars). 예: `abcdef1234567890abcdef1234567890`
 - **Observation ID(Parent Span ID)**: 16자리의 16진수 문자열(16 hex chars). 예: `fedcba0987654321`
 
+이 두 값을 헤더로 실어 보낼 땐 `traceparent` 하나의 문자열로 합쳐서 보낸다. [W3C Trace Context 스펙](https://www.w3.org/TR/trace-context/#traceparent-header)이 정한 형식은 다음과 같음.
+
+`<version>-<trace-id>-<parent-id>-<flags>`
+
+- **version**: 2자리 16진수. 스펙상 현재 유효한 값은 `00`뿐 — 그대로 `00`으로 고정해서 씀.
+- **trace-id**: 위 Trace ID와 같은 값(32 hex chars). 전부 `0`이면 무효로 취급됨.
+- **parent-id**: 위 Observation ID(Parent Span ID)와 같은 값(16 hex chars). 전부 `0`이면 무효로 취급됨.
+- **flags**: 2자리 16진수 비트필드. 실무에서 신경 쓸 값은 sampled 비트 하나뿐 — 이 trace를 기록하겠다는 뜻으로 `01`을 씀. 직접 traceparent를 만들 때 `00`을 쓰면 하위 시스템이 이 trace를 안 남겨도 되는 것으로 해석할 수 있으므로, 새로 만들 땐 `01`로 고정.
+
+예: `00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01`
+
+즉 직접 traceparent를 새로 만들 때는(예: 아래 "parent_span_id 교체") version/flags는 `00`/`01` 고정값을 쓰고, trace-id/parent-id 자리만 실제 값으로 갈아끼우면 됨.
+
 ## Trace Context 전달 방법
 
 Trace Context를 실제 코드에 적용하는 방법은 크게 2가지임.
@@ -93,22 +106,35 @@ with langfuse.start_as_current_observation(
 
 ## GenOS에서 Langfuse Context 전달 방법
 
-1. 워크플로우
-  1. GenOS Config를 통해 환경변수로 langfuse trace parent를 전달할 수 있는 헤더를 허용 설정 후 헤더에 `traceparent`를 넣어 전달
-  2. body에 langfuse trace context를 넣어 전달
-2. A2A - 불가능
-  1. A2A에서는 GenOS가 헤더를 자체적으로 재구성할 수 없음. body도 변환할 수 없음.
+1. 워크플로우: GenOS Config를 통해 환경변수로 langfuse trace parent를 전달할 수 있는 헤더를 허용 설정 후 헤더에 `traceparent`를 넣어 전달
+2. A2A - 불가능: A2A에서는 GenOS가 헤더를 자체적으로 재구성할 수 없음. body도 변환할 수 없음.
 
-워크플로우 경로(코드서빙 게이트웨이 경유 호출 포함)가 가능한 이유는 게이트웨이가 요청 body를 건드리지 않고 그대로 통과시키기 때문임.
+워크플로우 경로(코드서빙 게이트웨이 경유 호출 포함)가 가능한 이유는 게이트웨이가 요청 헤더를 body와 마찬가지로 건드리지 않고 그대로 통과시키기 때문임.
 
-코드서빙 요청 스키마는 사용자 정의이므로 게이트웨이가 body를 건드리지 않는다는 원칙을 따름.
+헤더를 손대지 않으니 그 안에 실어 보낸 `traceparent`가 상대 에이전트의 라우터까지 그대로 도달함([`subagent_client.py`](codes/03_propagation/common/subagent_client.py) 참고). 더 이상 `trace_id`/`parent_span_id`를 body 필드로 실어 보내지 않음 — 표준 `traceparent` 헤더 하나로만 전파함.
 
-body를 손대지 않으니 그 안에 실어 보낸 `trace_id`/`parent_span_id`가 상대 에이전트의 요청 스키마까지 그대로 도달함([`subagent_client.py`](codes/03_propagation/common/subagent_client.py) 참고).
+반대로 A2A는 GenOS가 A2A 프로토콜 스펙에 맞춰 헤더/body를 직접 재구성하는 계층임. 그 과정에서 임의로 실은 헤더/body 필드는 사라짐. 그래서 propagation이 불가능함.
 
-반대로 A2A는 GenOS가 A2A 프로토콜 스펙에 맞춰 헤더/body를 직접 재구성하는 계층임. 그 과정에서 body에 넣은 임의 필드는 사라짐. 그래서 propagation이 불가능함.
+## 서브 에이전트를 호출할 때: parent_span_id 교체
+
+받은 `traceparent`를 그대로 서브 에이전트에 넘기면 안 됨. trace_id는 같아야 하지만 parent-id는 지금 이 호출을 하는 자신의 span으로 바꿔야 함. 그대로 넘기면 서브 에이전트가 자신이 받았던 그 부모 span 아래로 붙어버려서, 그 사이에 있는 마스터 에이전트의 처리 과정(도구 호출 등)이 트리에서 빠짐.
+
+그래서 서브 에이전트를 호출하는 시점(예: 도구 호출)의 현재 span에서 trace_id/observation_id를 읽어 parent-id 자리를 이 span의 id로 교체한 새 `traceparent`를 만들어 전달함.
+
+```python
+# agents/master_agent/agent.py::_execute_tool
+client = get_client()
+trace_id = client.get_current_trace_id()
+parent_span_id = client.get_current_observation_id()  # 지금 이 tool span 자신의 id
+traceparent = f"00-{trace_id}-{parent_span_id}-01" if trace_id and parent_span_id else None
+result = _TOOL.run(instruction=instruction, traceparent=traceparent)
+```
+
+서브 에이전트는 이렇게 전달받은 `traceparent`를 그대로 `langfuse_trace_id`/`langfuse_parent_observation_id`로 넘기면 됨. 새 trace를 만드는 게 아니라, 전달받은 그 span 바로 아래에 자기 span을 이어붙이는 것.
 
 ## 예제 코드
 
-- GenOS 워크플로우 API로 trace_id/parent_span_id를 이어받는 예: [`03_propagation`](codes/03_propagation)의 master 에이전트(`router.py`, `agents/master_agent/service.py`)
+- GenOS 워크플로우 경로로 `traceparent` 헤더를 이어받는 예: [`03_propagation`](codes/03_propagation)의 master 에이전트(`router.py`에서 헤더 추출, `agents/master_agent/service.py`의 `_parsed_traceparent`/`handle_turn`에서 파싱·이어붙이기)
+- 서브 에이전트를 호출할 때 parent_span_id를 교체해 `traceparent`를 다시 만들어 전달하는 예: [`03_propagation`](codes/03_propagation)의 `agents/master_agent/agent.py`(`_execute_tool`), `agents/master_agent/tools.py`
 - A2A 경유 호출은 위에서 설명했듯 불가능하므로 대응하는 예제 코드 없음.
 
